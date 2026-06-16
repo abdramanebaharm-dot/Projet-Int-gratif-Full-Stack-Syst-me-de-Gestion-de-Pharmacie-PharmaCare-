@@ -1,0 +1,99 @@
+name: CI/CD PharmaCare
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — Lint & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: pharmacie_test
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Générer le client Prisma
+        run: npm run db:generate
+        env:
+          DATABASE_URL: postgresql://admin:admin@localhost:5432/pharmacie_test
+
+      - name: Appliquer les migrations
+        run: npx prisma migrate deploy --schema=src/prisma/schema.prisma
+        env:
+          DATABASE_URL: postgresql://admin:admin@localhost:5432/pharmacie_test
+
+      - name: Vérifier le démarrage du serveur
+        run: |
+          timeout 10s node src/server.js &
+          sleep 3
+          curl -f http://localhost:5000/api/health
+        env:
+          DATABASE_URL: postgresql://admin:admin@localhost:5432/pharmacie_test
+          JWT_SECRET: ci_test_secret
+
+  frontend:
+    name: Frontend — Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_API_URL: http://localhost:5000/api
+
+  docker:
+    name: Docker — Build Images
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t pharmacare-backend ./backend
+
+      - name: Build frontend image
+        run: docker build -t pharmacare-frontend ./frontend
+
+      - name: Vérifier docker-compose
+        run: docker compose config
