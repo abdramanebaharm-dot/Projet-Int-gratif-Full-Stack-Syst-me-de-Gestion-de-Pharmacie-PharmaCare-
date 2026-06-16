@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  PHARMACIEN
+  CAISSIER
+}
+
+enum TypeMouvement {
+  ENTREE
+  SORTIE
+  AJUSTEMENT
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  nom       String
+  email     String   @unique
+  password  String
+  role      Role     @default(CAISSIER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ventes    Vente[]
+}
+
+model Fournisseur {
+  id        Int           @id @default(autoincrement())
+  nom       String
+  telephone String
+  adresse   String
+  email     String        @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  medicaments Medicament[]
+  commandes Commande[]
+}
+
+model Medicament {
+  id             Int           @id @default(autoincrement())
+  nom            String
+  categorie      String
+  description    String?
+  prixAchat      Float
+  prixVente      Float
+  quantite       Int           @default(0)
+  dateExpiration DateTime
+  codeBarres     String?       @unique
+  fabricant      String
+  fournisseurId  Int?
+  fournisseur    Fournisseur?  @relation(fields: [fournisseurId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  mouvements     MouvementStock[]
+  lignesVente    LigneVente[]
+}
+
+model MouvementStock {
+  id           Int           @id @default(autoincrement())
+  type         TypeMouvement
+  quantite     Int
+  motif        String?
+  dateMouvement DateTime     @default(now())
+  medicamentId Int
+  medicament   Medicament    @relation(fields: [medicamentId], references: [id])
+}
+
+model Client {
+  id         Int      @id @default(autoincrement())
+  nom        String
+  telephone  String
+  email      String?  @unique
+  adresse    String?
+  pointsFidelite Int  @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  ventes     Vente[]
+}
+
+model Vente {
+  id            Int          @id @default(autoincrement())
+  numeroFacture String       @unique
+  dateVente     DateTime     @default(now())
+  montant       Float
+  clientId      Int
+  client        Client       @relation(fields: [clientId], references: [id])
+  userId        Int
+  user          User         @relation(fields: [userId], references: [id])
+  lignes        LigneVente[]
+}
+
+model LigneVente {
+  id           Int        @id @default(autoincrement())
+  quantite     Int
+  prixUnitaire Float
+  venteId      Int
+  vente        Vente      @relation(fields: [venteId], references: [id], onDelete: Cascade)
+  medicamentId Int
+  medicament   Medicament @relation(fields: [medicamentId], references: [id])
+}
+
+model Commande {
+  id            Int         @id @default(autoincrement())
+  dateCommande  DateTime    @default(now())
+  montant       Float
+  statut        String      @default("EN_COURS")
+  fournisseurId Int
+  fournisseur   Fournisseur @relation(fields: [fournisseurId], references: [id])
+}
